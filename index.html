@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>數學乘法射擊遊戲</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* 使用 Inter 字體 */
+        body { font-family: 'Inter', sans-serif; }
+        /* 遊戲容器置中 */
+        .game-container {
+            max-width: 800px;
+            margin: 0 auto;
+            background-color: #1a1a2e; /* 深太空背景 */
+            border: 4px solid #4ade80; /* 亮綠色邊框 */
+            box-shadow: 0 0 20px rgba(74, 203, 114, 0.5);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: auto;
+            background-color: #0d0d18;
+        }
+        /* 按鈕基礎樣式 (可愛風格) */
+        .game-btn {
+            background-color: #fca5a5; /* 柔和的粉紅色 */
+            color: #440000;
+            font-weight: bold;
+            border: 3px solid #ef4444;
+            transition: transform 0.1s;
+            box-shadow: 0 4px 0 #ef4444;
+        }
+        .game-btn:hover {
+            background-color: #fecaca;
+        }
+        .game-btn:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 0 #ef4444;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 min-h-screen p-4 flex flex-col items-center">
+
+    <h1 class="text-4xl font-extrabold text-white mb-6 text-center tracking-wider">
+        🚀 數學射擊挑戰 (2x2)
+    </h1>
+
+    <div id="game-ui" class="game-container w-full">
+        <!-- 遊戲資訊面板 -->
+        <div class="flex justify-between items-center p-3 bg-gray-800 text-white font-mono text-xl md:text-2xl">
+            <div class="flex items-center space-x-2">
+                <span class="text-red-400">❤️</span>
+                <span id="lives-display" class="font-bold">3</span>
+            </div>
+            <div id="problem-display" class="text-yellow-300 font-extrabold text-3xl md:text-5xl tracking-widest">
+                -- × --
+            </div>
+            <div class="flex items-center space-x-2">
+                <span class="text-green-400">🌟</span>
+                <span id="score-display" class="font-bold">0</span>
+            </div>
+        </div>
+
+        <!-- 遊戲畫布 -->
+        <canvas id="gameCanvas" width="800" height="600" class="cursor-pointer"></canvas>
+
+        <!-- 開始畫面/結束畫面 -->
+        <div id="start-screen" class="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-70 z-10 hidden" style="height: 600px; max-width: 800px; margin: auto;">
+            <h2 id="screen-title" class="text-6xl font-black text-yellow-400 mb-6 animate-pulse">數學射擊遊戲</h2>
+            <p id="screen-message" class="text-white text-xl mb-8 text-center px-4">
+                目標：射擊正確答案的小行星！<br>
+                控制：鍵盤← → 或 A D 移動，空白鍵發射。<br>
+                行動裝置請使用下方的按鈕。
+            </p>
+            <button id="start-button" class="game-btn px-10 py-4 text-3xl rounded-full hover:bg-red-300 transition duration-150">
+                開始遊戲
+            </button>
+        </div>
+    </div>
+
+    <!-- 行動裝置控制面板 (在小型螢幕上顯示) -->
+    <div class="md:hidden w-full max-w-lg mt-6 p-4 bg-gray-800 rounded-xl shadow-2xl">
+        <h3 class="text-white text-lg font-semibold mb-3 text-center">行動裝置控制</h3>
+        <div class="flex justify-around items-center">
+            <button id="mobile-left" class="game-btn w-20 h-20 text-4xl rounded-xl">
+                &lt;
+            </button>
+            <button id="mobile-shoot" class="game-btn w-24 h-24 text-4xl rounded-full bg-blue-400 border-blue-600 shadow-blue-600 hover:bg-blue-300 active:shadow-blue-600" style="color:white; box-shadow: 0 4px 0 #2563eb;">
+                FIRE
+            </button>
+            <button id="mobile-right" class="game-btn w-20 h-20 text-4xl rounded-xl">
+                &gt;
+            </button>
+        </div>
+    </div>
+
+    <script type="module">
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const startButton = document.getElementById('start-button');
+        const problemDisplay = document.getElementById('problem-display');
+        const scoreDisplay = document.getElementById('score-display');
+        const livesDisplay = document.getElementById('lives-display');
+        const screenTitle = document.getElementById('screen-title');
+        const screenMessage = document.getElementById('screen-message');
+        
+        // 行動裝置按鈕
+        const mobileLeft = document.getElementById('mobile-left');
+        const mobileRight = document.getElementById('mobile-right');
+        const mobileShoot = document.getElementById('mobile-shoot');
+
+        // 遊戲常數
+        const CANVAS_WIDTH = 800;
+        const CANVAS_HEIGHT = 600;
+        const PLAYER_SIZE = 40;
+        const BULLET_SPEED = 8;
+        const ASTEROID_RADIUS = 30;
+        const MAX_ASTEROIDS = 3;
+        
+        // 遊戲狀態
+        let gameState = 'ready'; // ready, playing, gameover
+        let score = 0;
+        let lives = 3;
+        let player = { x: CANVAS_WIDTH / 2, speed: 7, movingLeft: false, movingRight: false };
+        let bullets = [];
+        let asteroids = [];
+        let currentProblem = null;
+        let lastUpdateTime = 0;
+        const TARGET_INTERVAL = 2000; // 每 2 秒生成一組小行星
+
+        // --- 數學邏輯 ---
+
+        /**
+         * 生成一個 2 位數 * 2 位數的乘法問題及其答案選項
+         */
+        function generateProblem() {
+            const num1 = Math.floor(Math.random() * 90) + 10; // 10 to 99
+            const num2 = Math.floor(Math.random() * 90) + 10; // 10 to 99
+            const correctAnswer = num1 * num2;
+
+            // 生成兩個不正確但合理的答案（分心物）
+            let distractor1, distractor2;
+            const variation = [1, -1, 10, -10, 100, -100];
+            
+            do {
+                const index1 = Math.floor(Math.random() * variation.length);
+                const offset1 = (Math.floor(Math.random() * 5) + 1);
+                distractor1 = correctAnswer + variation[index1] * offset1;
+                distractor1 = Math.max(100, distractor1); 
+
+                const index2 = Math.floor(Math.random() * variation.length);
+                const offset2 = (Math.floor(Math.random() * 5) + 1);
+                distractor2 = correctAnswer + variation[index2] * offset2;
+                distractor2 = Math.max(100, distractor2);
+            } while (distractor1 === correctAnswer || distractor2 === correctAnswer || distractor1 === distractor2);
+
+            const answers = [
+                { value: correctAnswer, isCorrect: true },
+                { value: distractor1, isCorrect: false },
+                { value: distractor2, isCorrect: false }
+            ];
+
+            // 打亂答案的順序
+            for (let i = answers.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [answers[i], answers[j]] = [answers[j], answers[i]];
+            }
+
+            return { num1, num2, correctAnswer, answers };
+        }
+
+        // --- 繪圖邏輯 (可愛風格) ---
+
+        /**
+         * 繪製玩家飛船 (可愛的圓形飛船)
+         */
+        function drawPlayer() {
+            ctx.fillStyle = '#4ade80'; // 綠色飛船
+            ctx.beginPath();
+            // 主體：圓形
+            ctx.arc(player.x, CANVAS_HEIGHT - 30, PLAYER_SIZE / 2, Math.PI, 2 * Math.PI); 
+            ctx.fill();
+
+            // 駕駛艙：小圓形
+            ctx.fillStyle = '#fef08a'; // 黃色
+            ctx.beginPath();
+            ctx.arc(player.x, CANVAS_HEIGHT - 30, PLAYER_SIZE / 4, Math.PI, 2 * Math.PI);
+            ctx.fill();
+
+            // 推進器火焰 (簡單三角形)
+            ctx.fillStyle = '#f97316'; 
+            ctx.beginPath();
+            ctx.moveTo(player.x - 10, CANVAS_HEIGHT - 30);
+            ctx.lineTo(player.x + 10, CANVAS_HEIGHT - 30);
+            ctx.lineTo(player.x, CANVAS_HEIGHT - 20);
+            ctx.fill();
+        }
+
+        /**
+         * 繪製子彈
+         */
+        function drawBullet(bullet) {
+            ctx.fillStyle = '#facc15'; // 亮黃色子彈
+            ctx.beginPath();
+            ctx.arc(bullet.x, bullet.y, 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        /**
+         * 繪製小行星 (圓形，帶有數字)
+         */
+        function drawAsteroid(asteroid) {
+            // 小行星本體 (可愛的岩石/星球)
+            ctx.fillStyle = asteroid.isCorrect ? '#60a5fa' : '#ef4444'; // 正確答案是藍色，錯誤是紅色
+            ctx.beginPath();
+            ctx.arc(asteroid.x, asteroid.y, ASTEROID_RADIUS, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 邊緣光暈 (讓它更可愛/突出)
+            ctx.strokeStyle = asteroid.isCorrect ? '#3b82f6' : '#b91c1c';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            // 小行星上的數字
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 18px Inter';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(asteroid.value, asteroid.x, asteroid.y);
+        }
+        
+        // --- 遊戲邏輯 ---
+
+        function initGame() {
+            score = 0;
+            lives = 3;
+            player.x = CANVAS_WIDTH / 2;
+            bullets = [];
+            asteroids = [];
+            currentProblem = generateProblem();
+            gameState = 'playing';
+            lastUpdateTime = performance.now();
+            
+            // 確保 Start Screen 被隱藏
+            startScreen.classList.add('hidden');
+            
+            updateUI();
+            gameLoop();
+        }
+
+        function updateUI() {
+            problemDisplay.textContent = `${currentProblem.num1} × ${currentProblem.num2}`;
+            scoreDisplay.textContent = score;
+            livesDisplay.textContent = lives;
+            if (lives <= 0) {
+                // 如果生命耗盡，將顯示設為 0，避免負數
+                livesDisplay.textContent = 0;
+            }
+        }
+
+        /**
+         * 產生一組新的小行星
+         */
+        function spawnAsteroids() {
+            if (!currentProblem) return;
+
+            const gap = CANVAS_WIDTH / (MAX_ASTEROIDS + 1); // 確保均勻分佈
+            
+            currentProblem.answers.forEach((answer, index) => {
+                const xPos = gap * (index + 1);
+                const speed = 0.5 + Math.random() * 0.5; // 速度變化，增加趣味
+                
+                asteroids.push({
+                    x: xPos,
+                    y: -ASTEROID_RADIUS, // 從畫布上方外開始
+                    value: answer.value,
+                    isCorrect: answer.isCorrect,
+                    radius: ASTEROID_RADIUS,
+                    dy: speed,
+                });
+            });
+        }
+
+        /**
+         * 處理玩家輸入
+         */
+        function handleInput() {
+            if (player.movingLeft) {
+                player.x = Math.max(PLAYER_SIZE / 2, player.x - player.speed);
+            }
+            if (player.movingRight) {
+                player.x = Math.min(CANVAS_WIDTH - PLAYER_SIZE / 2, player.x + player.speed);
+            }
+        }
+
+        /**
+         * 處理遊戲物件的移動
+         */
+        function updateObjects() {
+            // 1. 更新子彈位置
+            bullets.forEach(bullet => {
+                bullet.y -= BULLET_SPEED;
+            });
+            bullets = bullets.filter(bullet => bullet.y > 0);
+
+            // 2. 更新小行星位置
+            asteroids.forEach(asteroid => {
+                asteroid.y += asteroid.dy;
+            });
+            
+            // 檢查小行星是否越界
+            asteroids.filter(asteroid => asteroid.y > CANVAS_HEIGHT + ASTEROID_RADIUS).forEach(asteroid => {
+                if (asteroid.isCorrect) {
+                    // 正確答案漏掉，扣生命
+                    lives--;
+                    updateUI();
+                    if (lives <= 0) {
+                        endGame(false);
+                    } else {
+                        // 提示玩家
+                        showMessage('⚠️ 漏掉正確答案！ -1 生命', '#ff4d4d'); 
+                        resetProblem();
+                    }
+                } else {
+                    // 錯誤答案漏掉，無懲罰
+                    showMessage('✨ 避免錯誤答案！', '#66ff99'); 
+                }
+            });
+            // 移除越界的小行星
+            asteroids = asteroids.filter(asteroid => asteroid.y <= CANVAS_HEIGHT + ASTEROID_RADIUS);
+        }
+        
+        /**
+         * 重設問題，並清除所有場上小行星
+         */
+        function resetProblem() {
+            asteroids = [];
+            currentProblem = generateProblem();
+            updateUI();
+        }
+
+        /**
+         * 處理碰撞偵測
+         */
+        function checkCollisions() {
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                const bullet = bullets[i];
+                for (let j = asteroids.length - 1; j >= 0; j--) {
+                    const asteroid = asteroids[j];
+
+                    // 簡易圓形碰撞偵測
+                    const dx = bullet.x - asteroid.x;
+                    const dy = bullet.y - asteroid.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < asteroid.radius + 4) { // 4 是子彈半徑
+                        // 碰撞發生
+                        bullets.splice(i, 1); // 移除子彈
+                        
+                        if (asteroid.isCorrect) {
+                            score += 10;
+                            showMessage('🎉 答對了! +10 分', '#4ade80');
+                        } else {
+                            score = Math.max(0, score - 5); // 射中錯誤答案，小扣分
+                            showMessage('❌ 錯誤答案! -5 分', '#ff4d4d');
+                        }
+                        
+                        asteroids.splice(j, 1); // 移除小行星
+                        updateUI();
+                        
+                        // 當所有小行星都被移除後，生成新問題
+                        if (asteroids.length === 0) {
+                            resetProblem();
+                        }
+                        
+                        // 跳出內層循環，因為子彈已經被銷毀
+                        break; 
+                    }
+                }
+            }
+        }
+
+        /**
+         * 結束遊戲畫面
+         */
+        function endGame(isWin) {
+            gameState = 'gameover';
+            screenTitle.textContent = isWin ? '遊戲勝利！' : '遊戲結束 😭';
+            screenMessage.innerHTML = `您的最終得分: <span class="text-yellow-400 font-bold">${score}</span> 分！<br>
+                                        您能挑戰更高的分數嗎？`;
+            startButton.textContent = '重新開始';
+            startScreen.classList.remove('hidden');
+        }
+        
+        /**
+         * 顯示短暫的遊戲訊息
+         */
+        let messageTimer = null;
+        function showMessage(text, color) {
+            if (messageTimer) {
+                clearTimeout(messageTimer);
+            }
+            const tempDiv = document.createElement('div');
+            tempDiv.className = `absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 p-4 text-center text-3xl font-bold rounded-xl shadow-lg z-20 transition-opacity duration-300`;
+            tempDiv.style.backgroundColor = color;
+            tempDiv.style.color = '#1a1a2e';
+            tempDiv.style.opacity = '1';
+            tempDiv.textContent = text;
+            
+            const gameUi = document.getElementById('game-ui');
+            gameUi.appendChild(tempDiv);
+            
+            messageTimer = setTimeout(() => {
+                tempDiv.style.opacity = '0';
+                setTimeout(() => tempDiv.remove(), 300);
+            }, 1000); // 訊息顯示 1 秒
+        }
+
+        /**
+         * 遊戲主循環
+         */
+        function gameLoop(timestamp) {
+            if (gameState !== 'playing') return;
+
+            // 處理時間間隔以保持遊戲流暢
+            const deltaTime = timestamp - lastUpdateTime;
+            lastUpdateTime = timestamp;
+
+            // 1. 清除畫布
+            ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+            // 2. 處理輸入
+            handleInput();
+
+            // 3. 更新物件
+            updateObjects();
+
+            // 4. 碰撞偵測
+            checkCollisions();
+
+            // 5. 繪製物件
+            drawPlayer();
+            bullets.forEach(drawBullet);
+            asteroids.forEach(drawAsteroid);
+            
+            // 6. 小行星生成邏輯 (每 2 秒)
+            if (asteroids.length === 0 && deltaTime > 0) {
+                 spawnAsteroids();
+            }
+
+            // 7. 檢查遊戲結束
+            if (lives <= 0) {
+                endGame(false);
+                return;
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        /**
+         * 玩家發射子彈
+         */
+        function shoot() {
+            if (gameState !== 'playing') return;
+            // 限制子彈數量，防止作弊或卡頓
+            if (bullets.length < 5) { 
+                bullets.push({ 
+                    x: player.x, 
+                    y: CANVAS_HEIGHT - 30 - PLAYER_SIZE / 2, // 從飛船上方發射
+                });
+            }
+        }
+
+        // --- 事件監聽器 ---
+
+        // 桌面鍵盤控制
+        document.addEventListener('keydown', (e) => {
+            if (gameState !== 'playing') return;
+            if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') {
+                player.movingLeft = true;
+            } else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') {
+                player.movingRight = true;
+            } else if (e.key === ' ' || e.key === 'Enter') {
+                e.preventDefault(); // 防止空白鍵滾動頁面
+                shoot();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            if (gameState !== 'playing') return;
+            if (e.key === 'ArrowLeft' || e.key.toLowerCase() === 'a') {
+                player.movingLeft = false;
+            } else if (e.key === 'ArrowRight' || e.key.toLowerCase() === 'd') {
+                player.movingRight = false;
+            }
+        });
+        
+        // 行動裝置觸控控制 (按下)
+        mobileLeft.addEventListener('touchstart', (e) => { e.preventDefault(); player.movingLeft = true; });
+        mobileRight.addEventListener('touchstart', (e) => { e.preventDefault(); player.movingRight = true; });
+        mobileShoot.addEventListener('touchstart', (e) => { e.preventDefault(); shoot(); });
+
+        // 行動裝置觸控控制 (放開)
+        mobileLeft.addEventListener('touchend', () => { player.movingLeft = false; });
+        mobileRight.addEventListener('touchend', () => { player.movingRight = false; });
+        mobileShoot.addEventListener('touchend', () => { /* shoot() 在 touchstart 時已處理，這裡僅用於停止持續射擊的邏輯（如果有的話） */ });
+        
+        // 滑鼠/鍵盤點擊開始按鈕
+        startButton.addEventListener('click', initGame);
+        
+        // 確保在視窗載入完成後顯示初始畫面
+        window.onload = () => {
+             // 調整 Canvas 實際大小以適應容器，並保持繪圖解析度
+            canvas.width = CANVAS_WIDTH;
+            canvas.height = CANVAS_HEIGHT;
+            
+            // 顯示開始畫面
+            startScreen.classList.remove('hidden');
+        };
+
+    </script>
+</body>
+</html>
